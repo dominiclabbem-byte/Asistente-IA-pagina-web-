@@ -76,6 +76,8 @@
   var MODEL = 'claude-haiku-4-5-20251001';
   var SYS   = 'Eres el asistente virtual de BestFood Chile, empresa chilena especializada en distribución y venta de alimentos premium para restaurantes, hoteles, casinos, empresas de catering y hogares.\n\nPRODUCTOS: carnes premium nacionales e importadas, mariscos frescos y congelados, frutas y verduras seleccionadas, lácteos, productos gourmet importados, congelados de calidad.\n\nSERVICIOS: despacho a domicilio y a local comercial, pedidos programados (semanal/mensual), asesoría en selección de productos, precios por volumen para empresas, facturación para empresas.\n\nCONTACTO: ventas@bestfoodchile.cl | +56 9 XXXX XXXX\nHORARIO: Lunes a Viernes 8:00–18:00, Sábado 9:00–13:00\nCOBERTURA: Santiago y regiones (confirmar disponibilidad)\nPAGO: transferencia, tarjeta crédito/débito, factura para empresas\n\nOBJETIVO: responder dudas, mostrar el valor de BestFood y capturar datos del lead (nombre, teléfono o email) cuando haya interés de compra. Cuando captures datos, agradece y dile que un ejecutivo lo contactará pronto.\n\nTONO: amable, cercano, profesional, español chileno natural. Respuestas cortas (máx 3–4 oraciones). Si no sabes el precio exacto, ofrece conectar al visitante con el equipo de ventas. Nunca inventes información.';
 
+  console.log('[BF Chat] Iniciando asistente...');
+
   var btn   = document.getElementById('bf-btn');
   var box   = document.getElementById('bf-box');
   var cl    = document.getElementById('bf-cl');
@@ -85,13 +87,29 @@
   var dot   = document.getElementById('bf-dot');
   var chips = document.getElementById('bf-chips');
 
+  // Verificar que los elementos existen
+  if(!btn||!box||!msgs||!inp||!snd){
+    console.error('[BF Chat] ERROR: No se encontraron los elementos del chat en el DOM');
+    return;
+  }
+  console.log('[BF Chat] Elementos del DOM encontrados OK');
+
+  // Verificar API key
+  if(KEY==='TU_API_KEY_AQUI'){
+    console.warn('[BF Chat] ADVERTENCIA: No se ha configurado la API Key. Reemplaza TU_API_KEY_AQUI');
+  }
+
   var hist=[], open=false, busy=false, started=false;
 
   btn.onclick = function(){
     open=!open;
     box.classList.toggle('on',open);
     dot.style.display='none';
-    if(open&&!started){started=true;addMsg('bot','¡Hola! Bienvenido/a a BestFood Chile 👋 Soy tu asistente virtual. ¿En qué puedo ayudarte hoy? Puedo contarte sobre nuestros productos, precios, despachos o conectarte con el equipo de ventas.');}
+    if(open&&!started){
+      started=true;
+      console.log('[BF Chat] Chat abierto, mostrando bienvenida');
+      addMsg('bot','¡Hola! Bienvenido/a a BestFood Chile 👋 Soy tu asistente virtual. ¿En qué puedo ayudarte hoy? Puedo contarte sobre nuestros productos, precios, despachos o conectarte con el equipo de ventas.');
+    }
     if(open) inp.focus();
   };
   cl.onclick = function(){open=false;box.classList.remove('on');};
@@ -114,7 +132,6 @@
     var d=document.createElement('div');
     d.className='bfm '+r;
     d.textContent=t;
-    // Forzar estilos inline como respaldo
     d.style.cssText='display:block !important;visibility:visible !important;opacity:1 !important;min-height:20px !important;overflow:visible !important;';
     if(r==='bot'){
       d.style.cssText+='background:#e8f0fe !important;color:#111827 !important;padding:12px 15px !important;border-radius:16px !important;font-size:15px !important;line-height:1.6 !important;border:1px solid #c7d9fb !important;max-width:85% !important;align-self:flex-start !important;word-wrap:break-word !important;';
@@ -123,15 +140,28 @@
     }
     msgs.appendChild(d);
     msgs.scrollTop=msgs.scrollHeight;
+    console.log('[BF Chat] Mensaje agregado ('+r+'): '+t.substring(0,50)+'...');
   }
+
   function showTyp(){var d=document.createElement('div');d.className='bftyp';d.id='bft';d.innerHTML='<span></span><span></span><span></span>';msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;}
   function hideTyp(){var d=document.getElementById('bft');if(d)d.remove();}
 
   function go(text){
     if(busy)return;
+    console.log('[BF Chat] Enviando mensaje: '+text);
     addMsg('usr',text);
     hist.push({role:'user',content:text});
     busy=true;snd.disabled=true;showTyp();
+
+    if(KEY==='TU_API_KEY_AQUI'){
+      hideTyp();
+      addMsg('bot','⚠️ Error de configuración: La API Key no ha sido configurada. Contacta al administrador del sitio.');
+      busy=false;
+      console.error('[BF Chat] API Key no configurada');
+      return;
+    }
+
+    console.log('[BF Chat] Llamando API de Anthropic...');
     fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{
@@ -147,19 +177,32 @@
         messages:hist.slice(-16)
       })
     })
-    .then(function(r){return r.json();})
+    .then(function(r){
+      console.log('[BF Chat] Respuesta HTTP status: '+r.status);
+      return r.json();
+    })
     .then(function(d){
       hideTyp();
+      console.log('[BF Chat] Respuesta API:', JSON.stringify(d).substring(0,200));
+      // Manejar errores de la API
+      if(d.error){
+        console.error('[BF Chat] Error API: '+d.error.type+' - '+d.error.message);
+        addMsg('bot','Hubo un problema técnico. Escríbenos a ventas@bestfoodchile.cl o llama al +56 9 7578 8401.');
+        return;
+      }
       var reply=(d.content&&d.content[0]&&d.content[0].text)||'Hubo un problema. Escríbenos a ventas@bestfoodchile.cl';
       addMsg('bot',reply);
       hist.push({role:'assistant',content:reply});
     })
-    .catch(function(){
+    .catch(function(err){
       hideTyp();
-      addMsg('bot','Tuve un problema al conectarme. Escríbenos a ventas@bestfoodchile.cl o llama al +56 9 XXXX XXXX.');
+      console.error('[BF Chat] Error de conexión:', err);
+      addMsg('bot','Tuve un problema al conectarme. Escríbenos a ventas@bestfoodchile.cl o llama al +56 9 7578 8401.');
     })
     .finally(function(){busy=false;snd.disabled=!inp.value.trim();});
   }
+
+  console.log('[BF Chat] Asistente listo ✓');
 })();
 </script>
 <!-- ============================================================ -->
